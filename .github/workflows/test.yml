@@ -48,6 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     
     steps:
       - uses: actions/checkout@v4
@@ -70,5 +71,4 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages_dir: agentic-security/dist/
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: agentic-security/dist/

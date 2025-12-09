@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agentic-security"
+name = "SecureAgent"
 version = "0.1.0"
 description = "Agentic Identity Framework abstracting Keycloak/OIDC complexity for AI Agents"
 readme = "README.md"
