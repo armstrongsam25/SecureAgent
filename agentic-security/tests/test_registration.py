@@ -2,7 +2,7 @@ import pytest
 import os
 import json
 from unittest.mock import MagicMock
-from agentic_security.registration import register_client, RegistrationError
+from SecureAgent.registration import register_client, RegistrationError
 
 def test_register_client_success(mock_keycloak, tmp_path):
     # Mock return values

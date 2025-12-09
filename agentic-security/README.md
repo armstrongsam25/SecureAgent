@@ -22,7 +22,7 @@ pip install agentic-security
 Initialize the security module with your realm URL and service details.
 
 ```python
-from agentic_security import AgentSecurity
+from SecureAgent import AgentSecurity
 
 security = AgentSecurity(
     realm_url="http://localhost:8080",

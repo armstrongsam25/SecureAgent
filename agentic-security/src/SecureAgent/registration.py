@@ -4,7 +4,7 @@ import os
 from keycloak import KeycloakOpenID
 from .exceptions import RegistrationError
 
-logger = logging.getLogger("agentic-security.registration")
+logger = logging.getLogger("SecureAgent.registration")
 
 def register_client(
     server_url: str,

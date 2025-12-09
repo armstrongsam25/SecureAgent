@@ -40,7 +40,7 @@ jobs:
 
     - name: Run Tests with Coverage
       run: |
-        pytest -v --cov=agentic_security agentic-security/tests/
+        pytest -v --cov=SecureAgent agentic-security/tests/
 
   release:
     needs: test
