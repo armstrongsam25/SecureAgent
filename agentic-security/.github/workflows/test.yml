@@ -1,0 +1,43 @@
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install .[test]
+
+    - name: Start services (Keycloak & Postgres)
+      run: |
+        docker compose -f tests/integration/docker-compose.yml up -d
+      
+    - name: Wait for Keycloak
+      run: |
+        timeout 60s bash -c 'until curl -f -s http://localhost:8080/realms/master; do sleep 5; done'
+
+    - name: Setup Keycloak Realm
+      run: |
+        python tests/integration/keycloak_setup.py
+
+    - name: Run Tests with Coverage
+      run: |
+        pytest -v --cov=agentic_security tests/
