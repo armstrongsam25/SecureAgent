@@ -1,5 +1,9 @@
 # SecureAgent
 
+![Tests](https://github.com/armstrongsam25/SecureAgent/actions/workflows/test.yml/badge.svg)
+![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue)
+
 This repository contains the Dynamic Authorization Framework (DAF) for AI Agents. It is designed to provide "Identity as Code" for agentic workflows, abstracting away the complexities of OIDC and Keycloak.
 
 ## 📦 Agentic Security Package
