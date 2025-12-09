@@ -6,7 +6,7 @@ We take the security of `agentic-security` seriously. If you discover a security
 
 ### How to Report
 
-Please email us at **security@example.com** (replace with actual email) to report any security vulnerabilities.
+Please email us at **ai@uky.edu** to report any security vulnerabilities.
 
 **DO NOT** report security vulnerabilities through public GitHub issues.
 

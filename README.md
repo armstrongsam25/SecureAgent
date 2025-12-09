@@ -1,4 +1,4 @@
-# Dynamic Security Project
+# SecureAgent
 
 This repository contains the Dynamic Authorization Framework (DAF) for AI Agents. It is designed to provide "Identity as Code" for agentic workflows, abstracting away the complexities of OIDC and Keycloak.
 

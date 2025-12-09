@@ -11,7 +11,7 @@ requires-python = ">=3.9"
 license = "MIT"
 keywords = ["security", "oidc", "keycloak", "agents", "ai"]
 authors = [
-  {name = "Antigravity", email = "antigravity@example.com"},
+  {name = "Sam Armstrong", email = "DO_NOT_EMAIL_USE_ISSUES@github.com"},
 ]
 dependencies = [
   "fastapi",
