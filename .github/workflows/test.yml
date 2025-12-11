@@ -26,11 +26,11 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install ./agentic-security[test]
+        pip install ./SecureAgent[test]
 
     - name: Start services (Keycloak & Postgres)
       run: |
-        docker compose -f agentic-security/tests/integration/docker-compose.yml up -d
+        docker compose -f SecureAgent/tests/integration/docker-compose.yml up -d
       
     - name: Wait for Keycloak
       run: |
@@ -38,11 +38,11 @@ jobs:
 
     - name: Setup Keycloak Realm
       run: |
-        python agentic-security/tests/integration/keycloak_setup.py
+        python SecureAgent/tests/integration/keycloak_setup.py
 
     - name: Run Tests with Coverage
       run: |
-        pytest -v --cov=SecureAgent agentic-security/tests/
+        pytest -v --cov=SecureAgent SecureAgent/tests/
 
   release:
     needs: test
@@ -67,10 +67,10 @@ jobs:
 
       - name: Build package
         run: |
-          cd agentic-security
+          cd SecureAgent
           python -m build
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: agentic-security/dist/
+          packages-dir: SecureAgent/dist/

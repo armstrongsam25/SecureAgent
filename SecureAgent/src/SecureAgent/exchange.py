@@ -3,7 +3,7 @@ from keycloak import KeycloakOpenID
 from keycloak.exceptions import KeycloakPostError
 from .exceptions import TokenExchangeError, PolicyDenied
 
-logger = logging.getLogger("agentic-security.exchange")
+logger = logging.getLogger("SecureAgent.exchange")
 
 def exchange_token(
     keycloak_client: KeycloakOpenID,

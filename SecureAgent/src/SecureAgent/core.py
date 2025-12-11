@@ -9,7 +9,7 @@ from .registration import register_client
 from .exchange import exchange_token
 from .exceptions import AgenticSecurityError
 
-logger = logging.getLogger("agentic-security.core")
+logger = logging.getLogger("SecureAgent.core")
 
 class AgentSecurity:
     def __init__(

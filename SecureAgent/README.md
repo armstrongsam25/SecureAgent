@@ -10,7 +10,7 @@ This package abstracts away the complexity of:
 ## Installation
 
 ```bash
-pip install agentic-security
+pip install SecureAgent
 ```
 
 *Note: You may need to install from source or a private repository until published.*

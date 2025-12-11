@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-We take the security of `agentic-security` seriously. If you discover a security vulnerability, please report it to us immediately.
+We take the security of `SecureAgent` seriously. If you discover a security vulnerability, please report it to us immediately.
 
 ### How to Report
 

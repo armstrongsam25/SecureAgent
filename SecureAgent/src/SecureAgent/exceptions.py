@@ -1,5 +1,5 @@
 class AgenticSecurityError(Exception):
-    """Base exception for agentic-security"""
+    """Base exception for SecureAgent"""
     pass
 
 class RegistrationError(AgenticSecurityError):

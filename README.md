@@ -8,9 +8,9 @@ This repository contains the Dynamic Authorization Framework (DAF) for AI Agents
 
 ## 📦 Agentic Security Package
 
-The core of this project is the `agentic-security` Python package. It provides a high-level API for agents to automatically register themselves and exchange tokens securely.
+The core of this project is the `SecureAgent` Python package. It provides a high-level API for agents to automatically register themselves and exchange tokens securely.
 
-**[👉 Go to Agentic Security Package](./agentic-security/README.md)**
+**[👉 Go to Agentic Security Package](./SecureAgent/README.md)**
 
 ### Key Features
 - **Zero-Touch Registration**: Agents auto-register with the Identity Provider on first boot.
@@ -27,5 +27,5 @@ The `poc/` directory contains the original scripts and experiments used to valid
 
 ## Project Structure
 
-- `agentic-security/`: The reusable, pip-installable package.
+- `SecureAgent/`: The reusable, pip-installable package.
 - `poc/`: Experimental scripts and raw implementation files.
