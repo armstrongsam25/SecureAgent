@@ -66,25 +66,26 @@ def setup_keycloak():
         f.write(iat['token'])
 
     # 3. Create Test User
+    logger.info("Processing test user 'testuser'...")
+    existing_user_id = keycloak_admin.get_user_id("testuser")
+    if existing_user_id:
+        logger.info("User 'testuser' exists. Deleting to ensure clean state...")
+        keycloak_admin.delete_user(existing_user_id)
+
     logger.info("Creating test user 'testuser'...")
-    try:
-        user_id = keycloak_admin.create_user({
-            "username": "testuser", 
-            "enabled": True, 
-            "emailVerified": True,
-            "firstName": "Test",
-            "lastName": "User"
-        })
-        keycloak_admin.set_user_password(user_id, "password", temporary=False)
-    except KeycloakError as e:
-        if "User exists" in str(e) or e.response_code == 409:
-            logger.info("User 'testuser' already exists. Updating...")
-            user_id = keycloak_admin.get_user_id("testuser")
-            # Ensure password is set and actions cleared
-            keycloak_admin.set_user_password(user_id, "password", temporary=False)
-            keycloak_admin.update_user(user_id, {"emailVerified": True, "requiredActions": []})
-        else:
-            raise e
+    user_id = keycloak_admin.create_user({
+        "username": "testuser", 
+        "email": "testuser@example.com",
+        "enabled": True, 
+        "emailVerified": True,
+        "firstName": "Test",
+        "lastName": "User",
+        "requiredActions": [] 
+    })
+    keycloak_admin.set_user_password(user_id, "password", temporary=False)
+    
+    user_info = keycloak_admin.get_user(user_id)
+    logger.info(f"Created User Info: {json.dumps(user_info, indent=2)}")
 
     # Create finaluser just in case
     logger.info("Creating 'finaluser'...")
@@ -163,6 +164,23 @@ def setup_keycloak():
     # strict Token Exchange, we might need to grant permission to the specific client ID *after* it appears.
     # BUT, we can also pre-create a client scope "exchange-allowed" and add it to default scopes?
     
+    # Create a public client for testing user login
+    logger.info("Creating 'test-client' for user login...")
+    try:
+        keycloak_admin.create_client({
+            "clientId": "test-client",
+            "name": "Test Client",
+            "enabled": True,
+            "publicClient": True,
+            "directAccessGrantsEnabled": True,
+            "standardFlowEnabled": True
+        })
+    except Exception as e:
+        if "Client existing" in str(e) or getattr(e, 'response_code', 0) == 409:
+             logger.info("Client 'test-client' already exists.")
+        else:
+             logger.warning(f"Failed to create test-client: {e}")
+
     logger.info("Setup complete. IAT saved to iat.txt")
 
 if __name__ == "__main__":

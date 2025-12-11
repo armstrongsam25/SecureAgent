@@ -1,9 +1,10 @@
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0.0
+    image: quay.io/keycloak/keycloak:26.0.7
     container_name: agent-keycloak
-    command: start-dev --features=token-exchange,admin-fine-grained-authz
+    command: start-dev
     environment:
+      KC_FEATURES: token-exchange,admin-fine-grained-authz,scripts
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_DB: postgres
@@ -19,6 +20,8 @@ services:
       - postgres
     networks:
       - agent-mesh-net
+    volumes:
+      - ./dynamic-mapper.jar:/opt/keycloak/providers/dynamic-mapper.jar
 
   postgres:
     image: postgres:16
