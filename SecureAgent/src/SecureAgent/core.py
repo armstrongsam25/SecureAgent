@@ -1,15 +1,25 @@
 import logging
 import json
 import os
+from typing import Optional
+import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from keycloak import KeycloakOpenID
+from keycloak.exceptions import KeycloakConnectionError as KCConnectionError
 
 from .registration import register_client
 from .exchange import exchange_token
-from .exceptions import AgenticSecurityError
+from .cache import TokenCache
+from .exceptions import (
+    AgenticSecurityError,
+    KeycloakConnectionError,
+    InitialAccessTokenError,
+    TokenExchangeError
+)
 
 logger = logging.getLogger("SecureAgent.core")
+
 
 class AgentSecurity:
     def __init__(
@@ -19,7 +29,10 @@ class AgentSecurity:
         initial_access_token: str = None,
         realm_name: str = "agent-mesh",
         creds_file: str = "credentials.json",
-        require_auth: bool = True
+        require_auth: bool = True,
+        fail_open: bool = False,
+        cache_tokens: bool = True,
+        cache_refresh_buffer: int = 30
     ):
         """
         Initializes the AgentSecurity framework.
@@ -31,12 +44,25 @@ class AgentSecurity:
             realm_name: Name of the Keycloak realm.
             creds_file: Path to store/read client credentials.
             require_auth: If True, verify_token will raise 401 on failure.
+            fail_open: If True, return None instead of raising exceptions when 
+                       Keycloak is unreachable (useful for development).
+            cache_tokens: If True, cache tokens to reduce API calls.
+            cache_refresh_buffer: Seconds before expiry to refresh cached tokens.
         """
         self.server_url = realm_url
         self.realm_name = realm_name
         self.service_name = service_name
         self.creds_file = creds_file
         self.keycloak_openid = None
+        self.fail_open = fail_open
+        self.cache_tokens = cache_tokens
+        
+        # Token cache for reducing API calls
+        self._token_cache = TokenCache(refresh_buffer_seconds=cache_refresh_buffer) if cache_tokens else None
+        
+        # Store credentials for async operations
+        self._client_id: Optional[str] = None
+        self._client_secret: Optional[str] = None
         
         self._initialize(initial_access_token)
         
@@ -63,11 +89,7 @@ class AgentSecurity:
         
         if not client_id or not client_secret:
             if not initial_access_token:
-                logger.warning("No credentials found and no Initial Access Token provided. Client not authenticated.")
-                # We might be in a mode where we only want to verify tokens (public key), 
-                # but for full functionality (exchange), we need a client.
-                # Proceeding, but exchange_token will fail if called.
-                return
+                raise InitialAccessTokenError()
             
             logger.info("No credentials found. Initiating Auto-Registration...")
             creds = register_client(
@@ -79,6 +101,10 @@ class AgentSecurity:
             )
             client_id = creds["client_id"]
             client_secret = creds["client_secret"]
+        
+        # Store for async operations
+        self._client_id = client_id
+        self._client_secret = client_secret
             
         # Initialize the Keycloak Client
         self.keycloak_openid = KeycloakOpenID(
@@ -88,22 +114,266 @@ class AgentSecurity:
             client_secret_key=client_secret
         )
         logger.info(f"AgentSecurity initialized for client: {client_id}")
-
-    def exchange_token(self, user_token: str, target_client: str) -> str:
+    
+    def get_token(self) -> Optional[str]:
         """
-        Exchanges the current user_token for a token valid for the target_client.
+        Get an access token for this agent using client credentials flow.
+        
+        Returns:
+            Access token string, or None if fail_open=True and Keycloak is unreachable.
+            
+        Raises:
+            AgenticSecurityError: If not initialized or token retrieval fails 
+                                  (unless fail_open=True).
         """
         if not self.keycloak_openid:
-            raise AgenticSecurityError("AgentSecurity not initialized with client credentials. Cannot exchange tokens.")
+            if self.fail_open:
+                logger.warning("AgentSecurity not initialized, returning None (fail_open=True)")
+                return None
+            raise AgenticSecurityError(
+                "AgentSecurity not initialized with client credentials. Cannot get token."
+            )
+        
+        cache_key = "client_credentials"
+        
+        # Check cache first
+        if self._token_cache:
+            cached = self._token_cache.get(cache_key)
+            if cached:
+                return cached
+        
+        try:
+            # Get token using client credentials grant
+            response = self.keycloak_openid.token(grant_type="client_credentials")
+            access_token = response.get("access_token")
             
-        return exchange_token(self.keycloak_openid, user_token, target_client)
+            if not access_token:
+                raise AgenticSecurityError("No access token in response")
+            
+            # Cache the token
+            if self._token_cache and "expires_in" in response:
+                self._token_cache.set(
+                    cache_key,
+                    access_token,
+                    expires_in=response["expires_in"],
+                    scope=response.get("scope")
+                )
+            
+            return access_token
+            
+        except KCConnectionError as e:
+            if self.fail_open:
+                logger.warning(f"Keycloak unreachable, returning None (fail_open=True): {e}")
+                return None
+            raise KeycloakConnectionError(f"Failed to connect to Keycloak: {e}")
+        except Exception as e:
+            if self.fail_open:
+                logger.warning(f"Token retrieval failed, returning None (fail_open=True): {e}")
+                return None
+            raise AgenticSecurityError(f"Failed to get token: {e}")
 
-    def verify_token(self, token: str = Depends(lambda: None)): 
-        # Note: In FastAPI, we need to wire this up carefully. 
-        # The 'token' arg needs to get the value from the request.
-        # usually: token: str = Depends(oauth2_scheme)
-        # But oauth2_scheme is an instance member.
-        pass
+    async def get_token_async(self) -> Optional[str]:
+        """
+        Async version of get_token(). Get an access token using client credentials flow.
+        
+        Returns:
+            Access token string, or None if fail_open=True and Keycloak is unreachable.
+        """
+        if not self._client_id or not self._client_secret:
+            if self.fail_open:
+                logger.warning("AgentSecurity not initialized, returning None (fail_open=True)")
+                return None
+            raise AgenticSecurityError(
+                "AgentSecurity not initialized with client credentials. Cannot get token."
+            )
+        
+        cache_key = "client_credentials"
+        
+        # Check cache first
+        if self._token_cache:
+            cached = await self._token_cache.aget(cache_key)
+            if cached:
+                return cached
+        
+        token_url = f"{self.server_url}/realms/{self.realm_name}/protocol/openid-connect/token"
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    token_url,
+                    data={
+                        "grant_type": "client_credentials",
+                        "client_id": self._client_id,
+                        "client_secret": self._client_secret
+                    }
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                access_token = data.get("access_token")
+                if not access_token:
+                    raise AgenticSecurityError("No access token in response")
+                
+                # Cache the token
+                if self._token_cache and "expires_in" in data:
+                    await self._token_cache.aset(
+                        cache_key,
+                        access_token,
+                        expires_in=data["expires_in"],
+                        scope=data.get("scope")
+                    )
+                
+                return access_token
+                
+        except httpx.ConnectError as e:
+            if self.fail_open:
+                logger.warning(f"Keycloak unreachable, returning None (fail_open=True): {e}")
+                return None
+            raise KeycloakConnectionError(f"Failed to connect to Keycloak: {e}")
+        except httpx.HTTPStatusError as e:
+            if self.fail_open:
+                logger.warning(f"Token retrieval failed, returning None (fail_open=True): {e}")
+                return None
+            raise AgenticSecurityError(f"Token request failed: {e}")
+        except Exception as e:
+            if self.fail_open:
+                logger.warning(f"Token retrieval failed, returning None (fail_open=True): {e}")
+                return None
+            raise AgenticSecurityError(f"Failed to get token: {e}")
+
+    def exchange_token(self, user_token: str, target_client: str) -> Optional[str]:
+        """
+        Exchanges the current user_token for a token valid for the target_client.
+        
+        Args:
+            user_token: The token to exchange.
+            target_client: The target client/audience for the new token.
+            
+        Returns:
+            Exchanged access token, or None if fail_open=True and operation fails.
+        """
+        if not self.keycloak_openid:
+            if self.fail_open:
+                logger.warning("AgentSecurity not initialized, returning None (fail_open=True)")
+                return None
+            raise AgenticSecurityError(
+                "AgentSecurity not initialized with client credentials. Cannot exchange tokens."
+            )
+        
+        cache_key = f"exchange:{target_client}"
+        
+        # Check cache first
+        if self._token_cache:
+            cached = self._token_cache.get(cache_key)
+            if cached:
+                return cached
+        
+        try:
+            access_token = exchange_token(self.keycloak_openid, user_token, target_client)
+            
+            # Cache for a shorter time since we don't know exact expiry
+            if self._token_cache:
+                self._token_cache.set(cache_key, access_token, expires_in=300)  # 5 min default
+            
+            return access_token
+            
+        except KCConnectionError as e:
+            if self.fail_open:
+                logger.warning(f"Keycloak unreachable, returning None (fail_open=True): {e}")
+                return None
+            raise KeycloakConnectionError(f"Failed to connect to Keycloak: {e}")
+        except TokenExchangeError:
+            raise  # Re-raise exchange-specific errors (like PolicyDenied)
+        except Exception as e:
+            if self.fail_open:
+                logger.warning(f"Token exchange failed, returning None (fail_open=True): {e}")
+                return None
+            raise
+
+    async def exchange_token_async(self, user_token: str, target_client: str) -> Optional[str]:
+        """
+        Async version of exchange_token().
+        
+        Args:
+            user_token: The token to exchange.
+            target_client: The target client/audience for the new token.
+            
+        Returns:
+            Exchanged access token, or None if fail_open=True and operation fails.
+        """
+        if not self._client_id or not self._client_secret:
+            if self.fail_open:
+                logger.warning("AgentSecurity not initialized, returning None (fail_open=True)")
+                return None
+            raise AgenticSecurityError(
+                "AgentSecurity not initialized with client credentials. Cannot exchange tokens."
+            )
+        
+        cache_key = f"exchange:{target_client}"
+        
+        # Check cache first
+        if self._token_cache:
+            cached = await self._token_cache.aget(cache_key)
+            if cached:
+                return cached
+        
+        token_url = f"{self.server_url}/realms/{self.realm_name}/protocol/openid-connect/token"
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    token_url,
+                    data={
+                        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+                        "client_id": self._client_id,
+                        "client_secret": self._client_secret,
+                        "subject_token": user_token,
+                        "audience": target_client,
+                        "requested_token_type": "urn:ietf:params:oauth:token-type:access_token"
+                    }
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                access_token = data.get("access_token")
+                if not access_token:
+                    raise AgenticSecurityError("No access token in exchange response")
+                
+                # Cache the token
+                if self._token_cache and "expires_in" in data:
+                    await self._token_cache.aset(
+                        cache_key,
+                        access_token,
+                        expires_in=data["expires_in"]
+                    )
+                
+                return access_token
+                
+        except httpx.ConnectError as e:
+            if self.fail_open:
+                logger.warning(f"Keycloak unreachable, returning None (fail_open=True): {e}")
+                return None
+            raise KeycloakConnectionError(f"Failed to connect to Keycloak: {e}")
+        except httpx.HTTPStatusError as e:
+            if self.fail_open:
+                logger.warning(f"Token exchange failed, returning None (fail_open=True): {e}")
+                return None
+            raise AgenticSecurityError(f"Token exchange failed: {e}")
+        except Exception as e:
+            if self.fail_open:
+                logger.warning(f"Token exchange failed, returning None (fail_open=True): {e}")
+                return None
+            raise AgenticSecurityError(f"Failed to exchange token: {e}")
+
+    def clear_cache(self, key: Optional[str] = None) -> None:
+        """
+        Clear cached tokens.
+        
+        Args:
+            key: Optional specific cache key to clear. If None, clears all.
+        """
+        if self._token_cache:
+            self._token_cache.clear(key)
         
     def get_verify_token_dependency(self):
         """
